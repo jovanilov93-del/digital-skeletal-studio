@@ -3,21 +3,21 @@ import { OrbitControls, useGLTF, Html, useProgress } from "@react-three/drei";
 import { Suspense, useRef, useEffect, Component, ReactNode } from "react";
 import * as THREE from "three";
 
-const RELEASE_BASE =
-  "https://github.com/jovanilov93-del/digital-skeletal-studio/releases/download/v1.0-models";
+const PAGES_BASE =
+  "https://jovanilov93-del.github.io/digital-skeletal-studio/models";
 
 export const MODEL_URLS: Record<string, string> = {
-  skeletal:      `${RELEASE_BASE}/skeletal.glb`,
-  muscular:      `${RELEASE_BASE}/muscular.glb`,
-  nervous:       `${RELEASE_BASE}/nervous.glb`,
-  circulatory:   `${RELEASE_BASE}/circulatory.glb`,
-  respiratory:   `${RELEASE_BASE}/respiratory.glb`,
-  digestive:     `${RELEASE_BASE}/digestive.glb`,
-  urinary:       `${RELEASE_BASE}/urinary.glb`,
-  lymphatic:     `${RELEASE_BASE}/lymphatic.glb`,
-  endocrine:     `${RELEASE_BASE}/endocrine.glb`,
-  reproductive:  `${RELEASE_BASE}/reproductive.glb`,
-  integumentary: `${RELEASE_BASE}/integumentary.glb`,
+  skeletal:      `${PAGES_BASE}/skeletal.glb`,
+  muscular:      `${PAGES_BASE}/muscular.glb`,
+  nervous:       `${PAGES_BASE}/nervous.glb`,
+  circulatory:   `${PAGES_BASE}/circulatory.glb`,
+  respiratory:   `${PAGES_BASE}/respiratory.glb`,
+  digestive:     `${PAGES_BASE}/digestive.glb`,
+  urinary:       `${PAGES_BASE}/urinary.glb`,
+  lymphatic:     `${PAGES_BASE}/lymphatic.glb`,
+  endocrine:     `${PAGES_BASE}/endocrine.glb`,
+  reproductive:  `${PAGES_BASE}/reproductive.glb`,
+  integumentary: `${PAGES_BASE}/integumentary.glb`,
 };
 
 // Tell drei where the Draco decoder lives (served from /public/draco/)
