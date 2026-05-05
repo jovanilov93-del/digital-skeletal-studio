@@ -168,33 +168,64 @@ const ViewerPage = () => {
       <aside className="lg:w-72 border-t lg:border-t-0 lg:border-l border-border bg-card/40 p-5 overflow-y-auto">
         {selected ? (
           <div className="space-y-4">
-            <div>
-              <div className="text-xs text-primary uppercase tracking-wide font-semibold mb-1">
-                {SYSTEMS.find((s) => s.id === system)?.label} system
-              </div>
-              <h2 className="text-xl font-bold break-words">{selected}</h2>
+            {/* System label */}
+            <div className="text-xs text-primary uppercase tracking-wide font-semibold">
+              {SYSTEMS.find((s) => s.id === system)?.label} system
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Click different parts of the model to explore structures. Use the opacity slider to see through layers.
+
+            {/* Selected part name with highlight indicator */}
+            <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+              <div className="flex items-center gap-2 mb-1">
+                {/* Glowing dot matching the highlight colour */}
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                  style={{
+                    background: "#00ccff",
+                    boxShadow: "0 0 6px 2px #00ccff88",
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">Selected structure</span>
+              </div>
+              <h2 className="text-lg font-bold break-words leading-snug mt-1">
+                {selected}
+              </h2>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              The selected part is highlighted in cyan on the model. Click another part to switch, or clear the selection below.
             </p>
-            <Button variant="ghost" size="sm" className="w-full" onClick={() => setSelected(null)}>
-              Clear selection
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={() => setSelected(null)}
+            >
+              ✕ Clear selection
             </Button>
+
+            <div className="border-t border-border pt-4 text-xs space-y-2">
+              <p className="font-semibold text-foreground">Controls</p>
+              <div className="flex justify-between text-muted-foreground"><span>Rotate</span><span>Left drag</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>Pan</span><span>Right drag</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>Zoom</span><span>Scroll wheel</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>Reset view</span><span>↺ button</span></div>
+            </div>
           </div>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-4">
             <Info className="h-8 w-8 mb-3 opacity-40" />
-            <p className="text-sm font-medium mb-1">
+            <p className="text-sm font-medium mb-1 text-foreground">
               {SYSTEMS.find((s) => s.id === system)?.label} System
             </p>
             <p className="text-xs leading-relaxed opacity-70">
-              Click any part of the model to select it. Use the controls on the right to zoom and reset the view.
+              Click any part of the model to select it — it will glow cyan and its name will appear here.
             </p>
-            <div className="mt-6 text-left w-full space-y-2 text-xs">
+            <div className="mt-6 text-left w-full space-y-2 text-xs border-t border-border pt-4">
               <p className="font-semibold text-foreground mb-2">Controls</p>
               <div className="flex justify-between"><span className="opacity-60">Rotate</span><span>Left drag</span></div>
               <div className="flex justify-between"><span className="opacity-60">Pan</span><span>Right drag</span></div>
-              <div className="flex justify-between"><span className="opacity-60">Zoom</span><span>Scroll wheel</span></div>
+              <div className="flex justify-between"><span className="opacity-60">Zoom</span><span>Scroll / buttons</span></div>
               <div className="flex justify-between"><span className="opacity-60">Reset view</span><span>↺ button</span></div>
             </div>
           </div>

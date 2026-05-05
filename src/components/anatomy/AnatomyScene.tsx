@@ -14,7 +14,7 @@ import {
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
-// ─── CDN base ────────────────────────────────────────────────────────────────
+// ─── CDN ─────────────────────────────────────────────────────────────────────
 const PAGES_BASE =
   "https://jovanilov93-del.github.io/digital-skeletal-studio/models";
 
@@ -32,20 +32,21 @@ export const MODEL_URLS: Record<string, string> = {
   integumentary: `${PAGES_BASE}/integumentary.glb`,
 };
 
-// Per-system Y-axis rotation fix (radians).
-// If a model faces backward, set it to Math.PI; if sideways, Math.PI / 2.
+// Y-axis rotation fix for models exported facing away from camera
 const SYSTEM_Y_ROTATION: Record<string, number> = {
-  skeletal:  Math.PI,   // faces -Z → rotate 180°
-  nervous:   Math.PI,   // faces -Z → rotate 180°
+  skeletal: Math.PI,
+  nervous:  Math.PI,
 };
 
-// Camera defaults
+// Highlight colour for selected mesh
+const HIGHLIGHT_COLOR = new THREE.Color("#00ccff");
+
 const CAM_POS    = new THREE.Vector3(0, 0, 3.5);
 const CAM_TARGET = new THREE.Vector3(0, 0, 0);
 
 useGLTF.setDecoderPath("/draco/");
 
-// ─── Exposed handle ───────────────────────────────────────────────────────────
+// ─── Public handle ────────────────────────────────────────────────────────────
 export interface AnatomySceneHandle {
   resetCamera: () => void;
   zoomIn: () => void;
@@ -54,10 +55,7 @@ export interface AnatomySceneHandle {
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 interface EBState { error: Error | null }
-class SceneErrorBoundary extends Component<
-  { children: ReactNode; onReset?: () => void },
-  EBState
-> {
+class SceneErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   state: EBState = { error: null };
   static getDerivedStateFromError(e: Error): EBState { return { error: e }; }
   render() {
@@ -95,29 +93,36 @@ function LoadingOverlay() {
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getPrimaryMat(mesh: THREE.Mesh): THREE.MeshStandardMaterial | null {
+  const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  return (mat as THREE.MeshStandardMaterial) ?? null;
+}
+
 // ─── Model ────────────────────────────────────────────────────────────────────
-// KEY POINT: receives `system` as a key prop from parent so it fully
-// unmounts/remounts on every system change → no stale group state.
 function AnatomyModel({
   system,
   opacity,
   onSelect,
   selected,
-  showLabels,
   onReady,
 }: {
   system: string;
   opacity: number;
   onSelect: (name: string) => void;
   selected: string | null;
-  showLabels: boolean;
   onReady: () => void;
 }) {
-  const url   = MODEL_URLS[system] ?? MODEL_URLS.muscular;
+  const url = MODEL_URLS[system] ?? MODEL_URLS.muscular;
   const { scene: raw } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
 
-  // Clone scene + materials so mutations never leak between system switches
+  // Refs for highlight tracking
+  const highlightedMesh        = useRef<THREE.Mesh | null>(null);
+  const savedEmissive          = useRef(new THREE.Color(0, 0, 0));
+  const savedEmissiveIntensity = useRef(0);
+
+  // Clone scene + materials – each mount gets its own independent copy
   const scene = useMemo(() => {
     const cloned = raw.clone(true);
     cloned.traverse((obj) => {
@@ -125,12 +130,12 @@ function AnatomyModel({
       const mesh = obj as THREE.Mesh;
       mesh.material = Array.isArray(mesh.material)
         ? mesh.material.map((m) => m.clone())
-        : mesh.material.clone();
+        : (mesh.material as THREE.Material).clone();
     });
     return cloned;
   }, [raw]);
 
-  // Opacity (on the already-cloned materials – safe)
+  // Apply opacity to cloned materials
   useEffect(() => {
     scene.traverse((obj) => {
       if (!(obj as THREE.Mesh).isMesh) return;
@@ -145,12 +150,23 @@ function AnatomyModel({
     });
   }, [scene, opacity]);
 
-  // Centre + uniform scale, then notify parent so camera can reset
+  // De-highlight when selection cleared externally (reset button)
+  useEffect(() => {
+    if (selected !== null) return;
+    const mesh = highlightedMesh.current;
+    if (!mesh) return;
+    const mat = getPrimaryMat(mesh);
+    if (mat) {
+      mat.emissive.copy(savedEmissive.current);
+      mat.emissiveIntensity = savedEmissiveIntensity.current;
+    }
+    highlightedMesh.current = null;
+  }, [selected]);
+
+  // Centre + scale, reset transforms first to avoid stale state
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-
-    // Reset any previous transforms BEFORE computing the box
     group.scale.setScalar(1);
     group.position.set(0, 0, 0);
     group.rotation.set(0, SYSTEM_Y_ROTATION[system] ?? 0, 0);
@@ -158,49 +174,62 @@ function AnatomyModel({
     const box    = new THREE.Box3().setFromObject(group);
     const size   = box.getSize(new THREE.Vector3());
     const centre = box.getCenter(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale  = 2.2 / maxDim;
+    const scale  = 2.2 / Math.max(size.x, size.y, size.z);
 
     group.scale.setScalar(scale);
-    // Re-centre after scaling: negate the world-space centre
-    group.position.set(
-      -centre.x * scale,
-      -centre.y * scale,
-      -centre.z * scale,
-    );
+    group.position.set(-centre.x * scale, -centre.y * scale, -centre.z * scale);
 
-    // Tell parent the model is positioned → safe to reset camera now
     onReady();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene]);          // only re-run when the scene object itself changes
+  }, [scene]);
+
+  // Click handler – highlight clicked mesh, restore previous
+  const handleClick = useCallback(
+    (e: { stopPropagation: () => void; object: THREE.Object3D }) => {
+      e.stopPropagation();
+      const clicked = e.object as THREE.Mesh;
+      if (!clicked.isMesh) return;
+
+      // Restore previously highlighted mesh
+      const prev = highlightedMesh.current;
+      if (prev && prev !== clicked) {
+        const mat = getPrimaryMat(prev);
+        if (mat) {
+          mat.emissive.copy(savedEmissive.current);
+          mat.emissiveIntensity = savedEmissiveIntensity.current;
+        }
+        highlightedMesh.current = null;
+      }
+
+      // Highlight newly clicked mesh
+      if (prev !== clicked) {
+        const mat = getPrimaryMat(clicked);
+        if (mat) {
+          savedEmissive.current.copy(mat.emissive);
+          savedEmissiveIntensity.current = mat.emissiveIntensity;
+          mat.emissive.copy(HIGHLIGHT_COLOR);
+          mat.emissiveIntensity = 0.55;
+        }
+        highlightedMesh.current = clicked;
+        onSelect(clicked.name || system);
+      }
+    },
+    [onSelect, system],
+  );
 
   return (
     <group ref={groupRef}>
-      <primitive
-        object={scene}
-        onClick={(e: { stopPropagation: () => void; object: THREE.Object3D }) => {
-          e.stopPropagation();
-          if (e.object.name) onSelect(e.object.name);
-        }}
-      />
-      {showLabels && selected && (
-        <Html distanceFactor={8} position={[0, 1.5, 0]} center>
-          <div className="px-2 py-1 rounded-md bg-card border border-primary/40 text-xs whitespace-nowrap shadow-elegant pointer-events-none">
-            {selected}
-          </div>
-        </Html>
-      )}
+      <primitive object={scene} onClick={handleClick} />
     </group>
   );
 }
 
-// ─── Inner canvas content (has access to useThree) ───────────────────────────
+// ─── Inner canvas content ─────────────────────────────────────────────────────
 function SceneContent({
   system,
   opacity,
   onSelect,
   selected,
-  showLabels,
   controlsRef,
   resetCam,
 }: {
@@ -208,20 +237,18 @@ function SceneContent({
   opacity: number;
   onSelect: (name: string) => void;
   selected: string | null;
-  showLabels: boolean;
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>;
   resetCam: () => void;
 }) {
   const { camera } = useThree();
 
-  // Place camera at default on first mount
   useEffect(() => {
     camera.position.copy(CAM_POS);
     camera.lookAt(CAM_TARGET);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Immediately snap camera back whenever the system changes (before model loads)
+  // Snap camera back the moment the system changes (before model loads)
   useEffect(() => {
     resetCam();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,18 +256,25 @@ function SceneContent({
 
   return (
     <>
+      {/* Full 360° rotation, panning, zooming, smooth damping */}
       <OrbitControls
         ref={controlsRef}
         enablePan
         enableZoom
         enableRotate
+        enableDamping
+        dampingFactor={0.08}
+        rotateSpeed={0.7}
         minDistance={0.8}
         maxDistance={14}
-        target={[CAM_TARGET.x, CAM_TARGET.y, CAM_TARGET.z]}
+        // No polar angle limits → free vertical rotation all the way around
+        minPolarAngle={0}
+        maxPolarAngle={Math.PI}
         makeDefault
       />
+
       <Suspense fallback={<LoadingOverlay />}>
-        {/* key={system} forces full remount → clean groupRef state every switch */}
+        {/* key forces full remount on every switch → clean state */}
         <SceneErrorBoundary key={system}>
           <AnatomyModel
             key={system}
@@ -248,8 +282,7 @@ function SceneContent({
             opacity={opacity}
             onSelect={onSelect}
             selected={selected}
-            showLabels={showLabels}
-            onReady={resetCam}  // reset camera again after model is positioned
+            onReady={resetCam}
           />
         </SceneErrorBoundary>
       </Suspense>
@@ -257,7 +290,7 @@ function SceneContent({
   );
 }
 
-// ─── Public component ─────────────────────────────────────────────────────────
+// ─── Exported component ───────────────────────────────────────────────────────
 export const AnatomyScene = forwardRef<
   AnatomySceneHandle,
   {
@@ -267,7 +300,7 @@ export const AnatomyScene = forwardRef<
     opacity?: number;
     showLabels?: boolean;
   }
->(({ system, onSelect, selected, opacity = 1, showLabels = true }, ref) => {
+>(({ system, onSelect, selected, opacity = 1 }, ref) => {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   const resetCam = useCallback(() => {
@@ -307,16 +340,15 @@ export const AnatomyScene = forwardRef<
       gl={{ antialias: true }}
     >
       <ambientLight intensity={0.7} />
-      <directionalLight position={[5, 5, 5]}  intensity={1.2} color="#88ddff" />
-      <directionalLight position={[-5, 3, -3]} intensity={0.5} color="#ff99aa" />
-      <pointLight       position={[0, 2, 3]}   intensity={0.5} color="#00d4ff" />
+      <directionalLight position={[5, 5, 5]}   intensity={1.2} color="#88ddff" />
+      <directionalLight position={[-5, 3, -3]}  intensity={0.5} color="#ff99aa" />
+      <pointLight       position={[0, 2, 3]}    intensity={0.5} color="#00d4ff" />
 
       <SceneContent
         system={system}
         opacity={opacity}
         onSelect={onSelect}
         selected={selected}
-        showLabels={showLabels}
         controlsRef={controlsRef}
         resetCam={resetCam}
       />
