@@ -68,7 +68,7 @@ const ViewerPage = () => {
       {/* Canvas */}
       <div className="flex-1 relative bg-gradient-hero">
         <div className="absolute inset-0 grid-pattern opacity-20" />
-        <AnatomyScene system={system} selected={selected} onSelect={setSelected} />
+        <AnatomyScene system={system} selected={selected} onSelect={setSelected} opacity={opacity[0] / 100} />
         <div className="absolute top-4 right-4 flex gap-2">
           <Button size="icon" variant="glow" onClick={() => setSelected(null)}><RotateCcw className="h-4 w-4" /></Button>
           <Button size="icon" variant="glow"><Maximize className="h-4 w-4" /></Button>

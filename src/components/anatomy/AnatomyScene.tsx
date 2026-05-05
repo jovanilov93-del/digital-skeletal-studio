@@ -1,107 +1,151 @@
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Float, Html } from "@react-three/drei";
-import { Suspense, useRef, useState } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, useGLTF, Html, useProgress, Environment } from "@react-three/drei";
+import { Suspense, useRef, useEffect } from "react";
 import * as THREE from "three";
 
-const HOTSPOTS = [
-  { id: "brain", label: "Brain", pos: [0, 1.55, 0.1] as [number, number, number] },
-  { id: "heart", label: "Heart", pos: [-0.18, 0.55, 0.25] as [number, number, number] },
-  { id: "lungs", label: "Lungs", pos: [0.35, 0.6, 0.15] as [number, number, number] },
-  { id: "liver", label: "Liver", pos: [0.25, 0.15, 0.2] as [number, number, number] },
-  { id: "femur", label: "Femur", pos: [0.18, -1.0, 0] as [number, number, number] },
-];
+const RELEASE_BASE =
+  "https://github.com/jovanilov93-del/digital-skeletal-studio/releases/download/v1.0-models";
 
-function HumanFigure({ system, onSelect, selected }: { system: string; onSelect: (id: string) => void; selected: string | null }) {
-  const group = useRef<THREE.Group>(null);
-  useFrame((_, dt) => { if (group.current) group.current.rotation.y += dt * 0.15; });
+const MODEL_URLS: Record<string, string> = {
+  skeletal:      `${RELEASE_BASE}/skeletal.glb`,
+  muscular:      `${RELEASE_BASE}/muscular.glb`,
+  nervous:       `${RELEASE_BASE}/nervous.glb`,
+  circulatory:   `${RELEASE_BASE}/circulatory.glb`,
+  respiratory:   `${RELEASE_BASE}/respiratory.glb`,
+  digestive:     `${RELEASE_BASE}/digestive.glb`,
+  urinary:       `${RELEASE_BASE}/urinary.glb`,
+  lymphatic:     `${RELEASE_BASE}/lymphatic.glb`,
+  endocrine:     `${RELEASE_BASE}/endocrine.glb`,
+  reproductive:  `${RELEASE_BASE}/reproductive.glb`,
+  integumentary: `${RELEASE_BASE}/integumentary.glb`,
+};
 
-  const skinColor = system === "skeletal" ? "#e8e2d5" : system === "muscular" ? "#a83232" : system === "nervous" ? "#f0d878" : "#d89a85";
-  const opacity = system === "skeletal" ? 0.25 : 0.85;
+function LoadingOverlay() {
+  const { progress, active } = useProgress();
+  if (!active) return null;
+  return (
+    <Html center>
+      <div className="flex flex-col items-center gap-3 text-foreground">
+        <div className="w-48 h-1.5 rounded-full bg-secondary overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <span className="text-xs text-muted-foreground">
+          Loading model… {Math.round(progress)}%
+        </span>
+      </div>
+    </Html>
+  );
+}
+
+function AnatomyModel({
+  system,
+  opacity,
+  onSelect,
+  selected,
+}: {
+  system: string;
+  opacity: number;
+  onSelect: (name: string) => void;
+  selected: string | null;
+}) {
+  const url = MODEL_URLS[system] ?? MODEL_URLS.skeletal;
+  const { scene } = useGLTF(url);
+  const groupRef = useRef<THREE.Group>(null);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const mesh = obj as THREE.Mesh;
+        const mat = mesh.material;
+        if (Array.isArray(mat)) {
+          mat.forEach((m) => { (m as THREE.MeshStandardMaterial).transparent = true; (m as THREE.MeshStandardMaterial).opacity = opacity; });
+        } else {
+          (mat as THREE.MeshStandardMaterial).transparent = true;
+          (mat as THREE.MeshStandardMaterial).opacity = opacity;
+        }
+      }
+    });
+  }, [scene, opacity]);
+
+  // Centre the model
+  useEffect(() => {
+    if (!groupRef.current) return;
+    const box = new THREE.Box3().setFromObject(groupRef.current);
+    const centre = box.getCenter(new THREE.Vector3());
+    groupRef.current.position.sub(centre);
+  }, [system]);
 
   return (
-    <group ref={group}>
-      {/* Head */}
-      <mesh position={[0, 1.55, 0]}>
-        <sphereGeometry args={[0.32, 32, 32]} />
-        <meshStandardMaterial color={skinColor} transparent opacity={opacity} roughness={0.6} />
-      </mesh>
-      {/* Neck */}
-      <mesh position={[0, 1.18, 0]}>
-        <cylinderGeometry args={[0.1, 0.13, 0.18, 16]} />
-        <meshStandardMaterial color={skinColor} transparent opacity={opacity} />
-      </mesh>
-      {/* Torso */}
-      <mesh position={[0, 0.55, 0]}>
-        <capsuleGeometry args={[0.42, 0.7, 8, 16]} />
-        <meshStandardMaterial color={skinColor} transparent opacity={opacity} roughness={0.5} />
-      </mesh>
-      {/* Arms */}
-      {[-1, 1].map((s) => (
-        <mesh key={s} position={[0.55 * s, 0.55, 0]} rotation={[0, 0, 0.2 * s]}>
-          <capsuleGeometry args={[0.11, 0.85, 6, 12]} />
-          <meshStandardMaterial color={skinColor} transparent opacity={opacity} />
-        </mesh>
-      ))}
-      {/* Hips */}
-      <mesh position={[0, -0.05, 0]}>
-        <capsuleGeometry args={[0.34, 0.2, 8, 16]} />
-        <meshStandardMaterial color={skinColor} transparent opacity={opacity} />
-      </mesh>
-      {/* Legs */}
-      {[-1, 1].map((s) => (
-        <mesh key={s} position={[0.18 * s, -0.85, 0]}>
-          <capsuleGeometry args={[0.14, 1.0, 8, 16]} />
-          <meshStandardMaterial color={skinColor} transparent opacity={opacity} />
-        </mesh>
-      ))}
-
-      {/* Skeletal accents when in skeletal mode */}
-      {system === "skeletal" && (
-        <>
-          <mesh position={[0, 0.55, 0]}>
-            <boxGeometry args={[0.55, 0.7, 0.32]} />
-            <meshStandardMaterial color="#f5f1e6" />
-          </mesh>
-          <mesh position={[0, -0.05, 0]}>
-            <boxGeometry args={[0.5, 0.18, 0.3]} />
-            <meshStandardMaterial color="#f5f1e6" />
-          </mesh>
-        </>
+    <group ref={groupRef}>
+      <primitive
+        object={scene}
+        onClick={(e: THREE.Event & { object: THREE.Object3D; stopPropagation: () => void }) => {
+          e.stopPropagation();
+          onSelect(e.object.name || system);
+        }}
+      />
+      {selected && (
+        <Html distanceFactor={8} position={[0, 1.2, 0]} center>
+          <div className="px-2 py-1 rounded-md bg-card border border-border text-xs whitespace-nowrap shadow-elegant pointer-events-none">
+            {selected}
+          </div>
+        </Html>
       )}
-
-      {/* Hotspots */}
-      {HOTSPOTS.map((h) => (
-        <Float key={h.id} speed={2} rotationIntensity={0} floatIntensity={0.3}>
-          <mesh position={h.pos} onClick={(e) => { e.stopPropagation(); onSelect(h.id); }}>
-            <sphereGeometry args={[0.06, 16, 16]} />
-            <meshStandardMaterial
-              color={selected === h.id ? "#ff3388" : "#00d4ff"}
-              emissive={selected === h.id ? "#ff3388" : "#00d4ff"}
-              emissiveIntensity={1.5}
-            />
-          </mesh>
-          {selected === h.id && (
-            <Html position={h.pos} distanceFactor={6} center>
-              <div className="px-2 py-1 rounded-md bg-card border border-border text-xs whitespace-nowrap shadow-elegant">
-                {h.label}
-              </div>
-            </Html>
-          )}
-        </Float>
-      ))}
     </group>
   );
 }
 
-export const AnatomyScene = ({ system, onSelect, selected }: { system: string; onSelect: (id: string) => void; selected: string | null }) => (
-  <Canvas camera={{ position: [0, 0.3, 4.5], fov: 45 }} className="!bg-transparent">
-    <ambientLight intensity={0.5} />
-    <directionalLight position={[5, 5, 5]} intensity={1.2} color="#88ddff" />
-    <directionalLight position={[-5, 3, -3]} intensity={0.6} color="#ff77aa" />
-    <pointLight position={[0, 2, 3]} intensity={0.8} color="#00d4ff" />
-    <Suspense fallback={null}>
-      <HumanFigure system={system} onSelect={onSelect} selected={selected} />
+// Preload next likely model in the background
+function Preloader({ system }: { system: string }) {
+  const systems = Object.keys(MODEL_URLS);
+  const idx = systems.indexOf(system);
+  const next = systems[(idx + 1) % systems.length];
+  useGLTF.preload(MODEL_URLS[next]);
+  return null;
+}
+
+export const AnatomyScene = ({
+  system,
+  onSelect,
+  selected,
+  opacity = 1,
+}: {
+  system: string;
+  onSelect: (id: string) => void;
+  selected: string | null;
+  opacity?: number;
+}) => (
+  <Canvas
+    camera={{ position: [0, 0, 3], fov: 45 }}
+    className="!bg-transparent"
+    gl={{ antialias: true }}
+  >
+    <ambientLight intensity={0.6} />
+    <directionalLight position={[5, 5, 5]} intensity={1.2} color="#88ddff" castShadow />
+    <directionalLight position={[-5, 3, -3]} intensity={0.5} color="#ff99aa" />
+    <pointLight position={[0, 2, 3]} intensity={0.6} color="#00d4ff" />
+    <Environment preset="city" />
+
+    <Suspense fallback={<LoadingOverlay />}>
+      <AnatomyModel
+        system={system}
+        opacity={opacity}
+        onSelect={onSelect}
+        selected={selected}
+      />
+      <Preloader system={system} />
     </Suspense>
-    <OrbitControls enablePan={false} minDistance={3} maxDistance={8} autoRotate={false} />
+
+    <OrbitControls
+      enablePan={false}
+      minDistance={1}
+      maxDistance={10}
+      autoRotate={false}
+      makeDefault
+    />
   </Canvas>
 );
