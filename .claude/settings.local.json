@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__2c58b181-961b-4390-afdd-c52abb7522e6__deploy_to_vercel",
+      "Bash(vercel --version)",
+      "Bash(npm install *)",
+      "Bash(vercel deploy *)",
+      "Read(//g/Website/**)",
+      "Bash(gltf-pipeline --version)",
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "Bash(winget install *)",
+      "Bash(choco install *)",
+      "Bash(scoop install *)",
+      "Bash(git config *)",
+      "Bash(git init *)",
+      "Bash(git remote *)"
+    ]
+  }
+}
