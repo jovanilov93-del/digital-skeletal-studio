@@ -44,8 +44,6 @@ const ViewerPage = () => {
   const handleSystemChange = (id: string) => {
     setSystem(id);
     setSelected(null);
-    // Short delay so the new model has time to mount before reset
-    setTimeout(() => sceneRef.current?.resetCamera(), 50);
   };
 
   return (
